@@ -53,14 +53,14 @@ Oceanic Teal theme: bright cyan and mint gradients with white rounded cards. Bin
 - History stored per user in a database with row-level security; single-scan delete (with confirmation), clear all, delete account, search and filter by category
 - Dashboard computed from the user's stored scans: category counts, category split, average confidence, recent scans
 - Learn hub with consistent cards for all five waste categories plus the Uncertain rule
-- Optional FastAPI classification service (see *Python backend* below)
+- Python FastAPI + PyTorch ML service (see *Python backend* below) — local MobileNetV3 classifier, vision-API fallback only when explicitly configured
 
 ## Technology stack
 
 - **Frontend:** React 19, TanStack Start (SSR + server functions), Tailwind CSS v4, shadcn/ui, lucide-react icons
 - **Backend:** Lovable Cloud (hosted Postgres with row-level security, email/password auth, server functions)
 - **AI:** vision models through the Lovable AI Gateway (`openai/gpt-6-astra`) via the AI SDK
-- **Optional service:** Python 3.13, FastAPI, uvicorn, httpx
+- **Optional service:** Python 3.11+, FastAPI, uvicorn, PyTorch + torchvision (MobileNetV3-Small), scikit-learn
 - **Testing:** Vitest (unit), Playwright (end-to-end)
 
 ## Architecture
@@ -70,14 +70,16 @@ Browser (React, TanStack Start)
    │  upload / camera image (data URL)
    ▼
 classifyWaste server function  (auth required, validates image)
-   ├─ if PYTHON_CLASSIFIER_URL set ─► Python FastAPI /classify ─► vision model API
+   ├─ if PYTHON_CLASSIFIER_URL set ─► Python FastAPI /classify
+   │                                     ├─ local MobileNetV3 model (PyTorch, trained weights)  ← primary
+   │                                     └─ vision model API — ONLY if AI_API_KEY is configured  ← explicit fallback
    └─ else ─────────────────────────► Lovable AI Gateway (openai/gpt-6-astra vision)
    │  normalizePrediction(): server-owned bin mapping + uncertainty threshold
    ▼
 Lovable Cloud Postgres `scans` table (RLS: user can only see own rows)
 ```
 
-**Production AI architecture as deployed today:** classification runs in the authenticated `classifyWaste` server function and calls the Lovable AI Gateway with the managed app key (`LOVABLE_API_KEY`). No third-party AI key is stored in the codebase. The Python service is **not deployed**; enabling it only requires hosting `backend/` and setting the `PYTHON_CLASSIFIER_URL` secret. There is **no silent fallback**: if the Python service is configured and unreachable, the scan fails visibly.
+**Production AI architecture as deployed today:** classification runs in the authenticated `classifyWaste` server function and calls the Lovable AI Gateway with the managed app key (`LOVABLE_API_KEY`). The Python service's local PyTorch model is the intended primary engine once trained and deployed (`backend/README.md`); the vision API inside it is a fallback used only when `AI_API_KEY` is set. There is **no silent fallback**: if the Python service is configured and unreachable, the scan fails visibly.
 
 ### Frontend (`src/`)
 - `src/routes/index.tsx` — UI (auth, scanner, dashboard, history, learn)
@@ -86,10 +88,15 @@ Lovable Cloud Postgres `scans` table (RLS: user can only see own rows)
 - `src/lib/eco-store.ts` — row mapping and dashboard statistics
 
 ### Python backend (`backend/`)
-- `backend/main.py` — FastAPI service, `POST /classify`, `GET /health`
-- `backend/requirements.txt`
+- `backend/main.py` — FastAPI service, `POST /classify`, `GET /health`; local ML engine first, vision-API fallback only when `AI_API_KEY` is set
+- `backend/prepare_dataset.py` — downloads a labelled public waste dataset (TrashNet, MIT — verified; optional 12-class Kaggle set), maps classes to app categories, writes a leakage-free stratified train/val/test split
+- `backend/train.py` — MobileNetV3-Small transfer learning, early stopping, saves weights + preprocessing config
+- `backend/evaluate.py` — accuracy, precision/recall/F1 (macro, weighted, per-class), confusion matrix, inference latency — from the held-out test split only
+- `backend/waste_model.py`, `backend/common.py` — model factory, preprocessing, shared category/bin/threshold constants
+- `backend/tests/` — pytest suite (API contract, uncertainty rule, image sniffing, model shape)
+- `backend/Dockerfile`, `backend/requirements.txt`, `backend/README.md` (full ML documentation)
 
-It sends the uploaded image to a real vision model over an OpenAI-compatible Chat Completions API (Lovable AI Gateway by default), validates the JSON reply, applies the same 55 % uncertainty rule, and returns an HTTP error (never a fake prediction) on any failure.
+The local CNN predicts dataset classes and maps them to app categories; bins and the 55 % uncertainty rule stay server-owned. `item` labels are dataset class names — never invented product names. The service returns HTTP errors (never fake predictions) on any failure.
 
 ## Run locally
 

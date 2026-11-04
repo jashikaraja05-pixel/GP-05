@@ -587,6 +587,7 @@ function ResultCard({ r }: { r: ScanResult }) {
         <h2 className="mt-1 text-xl font-bold sm:text-2xl">{r.item}</h2>
         <p className="mt-1 text-sm font-medium text-primary">{r.bin}</p>
         {unsure && <p role="status" className="mt-3 flex gap-2 rounded-xl border border-warning/50 bg-warning-soft p-3 text-sm text-warning-foreground"><HelpCircle className="mt-0.5 size-4 shrink-0" /> The model isn't confident enough to recommend a bin. Retake the photo with one item in clear light.</p>}
+        {!unsure && r.category === "hazardous" && <p role="alert" className="mt-3 flex gap-2 rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"><AlertTriangle className="mt-0.5 size-4 shrink-0" /> Hazardous waste — never crush, burn or mix it with household waste. Take it to the red-bin depot or a hazardous-waste collection drive.</p>}
         <div className="mt-5">
           <div className="flex justify-between text-sm"><span className="text-muted-foreground">Model confidence</span><span className="font-semibold">{r.confidence}%</span></div>
           <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted" role="progressbar" aria-valuenow={r.confidence} aria-valuemin={0} aria-valuemax={100} aria-label="Model confidence">
