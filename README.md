@@ -112,11 +112,16 @@ bun run dev
 cd backend
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-export AI_API_KEY=...            # Lovable AI Gateway key or any OpenAI-compatible key
-uvicorn main:app --port 8000
+
+# genuine local ML (dataset is MIT-licensed TrashNet by default):
+python prepare_dataset.py --source hf --data-dir data     # download + split (no leakage)
+python train.py --split data/split.json --epochs 25       # MobileNetV3 transfer learning
+python evaluate.py --split data/split.json                # held-out test metrics ONLY
+
+uvicorn main:app --port 8000                              # /health shows the active engine
 ```
 
-Deploy it to any Python host (Render, Railway, Fly.io…) with start command `uvicorn main:app --host 0.0.0.0 --port $PORT` and `AI_API_KEY` set. The URL must be publicly reachable over HTTPS. Then set the app secret `PYTHON_CLASSIFIER_URL=https://your-service` to route classifications through it. Without that secret the app uses the built-in AI path.
+Deploy it to any Python host (Render, Railway, Fly.io…) with start command `uvicorn main:app --host 0.0.0.0 --port $PORT`. For a local-ML deployment, keep the trained `models/` directory alongside the code (or use the included Dockerfile). Set `AI_API_KEY` only if you want the vision-API fallback. The URL must be publicly reachable over HTTPS. Then set the app secret `PYTHON_CLASSIFIER_URL=https://your-service` to route classifications through it. Without that secret the app uses the built-in AI path.
 
 ## Environment variables
 
@@ -133,7 +138,8 @@ No keys are hardcoded in the repository. Copy `.env.example` (root) and `backend
 
 ## API
 
-`GET /health` → `{"status":"ok","model":"...","configured":true}`
+`GET /health` → `{"status":"ok","engine":"local-ml:trashnet","local_model":true,"gateway_fallback_configured":false,...}`
+The `engine` field reports what is actually serving: `local-ml:<dataset>` after training, `gateway-fallback` when only `AI_API_KEY` is configured, `none` otherwise.
 
 `POST /classify` (multipart, field `file`, JPEG/PNG/WebP ≤ 6 MB) →
 ```json
@@ -198,8 +204,8 @@ The web app is published on Lovable at <https://eco-len.lovable.app> (frontend, 
 Or sign up with your own email and click the confirmation link. Each account sees only its own scans.
 
 ## AI tools disclosure
-- Built with the Lovable AI coding assistant.
-- Classification uses third-party vision models through the Lovable AI Gateway. No custom model was trained.
+- Built with the Lovable AI coding assistant (and ChatGPT for review).
+- A custom PyTorch model (MobileNetV3-Small, transfer learning on the MIT-licensed TrashNet dataset) is implemented in `backend/`; **training has not been run yet**, so the deployed app currently classifies with third-party vision models through the Lovable AI Gateway. Metrics will be added from `evaluate.py` after training.
 - Test images used in the evaluation tables were AI-generated.
 
 ## License
