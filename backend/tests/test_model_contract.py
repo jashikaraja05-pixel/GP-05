@@ -1,4 +1,4 @@
-from pathlib import Path
+import pytest
 
 from common import BINS, CATEGORIES, UNCERTAIN_THRESHOLD, sniff
 
@@ -22,7 +22,10 @@ def test_sniff_detects_real_formats():
 
 
 def test_waste_model_predict_contract():
-    torch = __import__("torch")
+    pytest.importorskip("torch", reason="torch not installed in this environment")
+    import torch
+    from PIL import Image
+
     from waste_model import build_model, predict_image
 
     config = {
@@ -36,7 +39,6 @@ def test_waste_model_predict_contract():
     # untrained head is fine for a contract check: shape + honest output fields
     model = build_model(6)
     model.eval()
-    from PIL import Image
     image = Image.new("RGB", (224, 224), "green")
     p = predict_image(model, config, image)
     assert p["category"] in CATEGORIES + ["uncertain"]
